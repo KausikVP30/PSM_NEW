@@ -1,0 +1,18 @@
+# Pinned dependencies recommended for Python 3.11 (Kaggle-friendly)
+numpy==1.24.4
+pandas==2.0.3
+pyyaml==6.0
+tqdm==4.66.1
+scikit-learn==1.2.2
+rank-bm25==0.2.2
+hnswlib==0.7.0
+sentence-transformers==2.2.2
+transformers==4.31.0
+# Use CPU wheel for torch on Kaggle if needed; Kaggle often preinstalls torch.
+torch>=2.0.1,<2.3.0
+rouge-score==0.1.2
+nltk==3.8.1
+
+# Notes:
+# - If a package fails to build on Kaggle, prefer using prebuilt dataset artifacts or enable internet in the notebook to pip install specific wheels.
+# - Install torch from PyTorch's recommended wheels when necessary (see https://pytorch.org).
