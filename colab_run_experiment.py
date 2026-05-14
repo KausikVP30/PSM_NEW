@@ -49,34 +49,43 @@ def prepare_triviaqa(out_path: Path, max_samples: int = 200) -> int:
 
     ds = load_dataset("trivia_qa", "rc", split=f"validation[:{max_samples}]")
     rows: List[Dict[str, Any]] = []
+    
     for ex in ds:
-        q = ex.get("question") or ex.get("query") or ""
-        # answer field in HF trivia_qa may be a string or dict-like; normalize to dict with aliases
-        ans = ex.get("answer")
+        q = ex.get("question") or ""
+        
+        # Extract answers
+        ans = ex.get("answer", {})
         if isinstance(ans, dict):
-            answer_field = {"aliases": ans.get("aliases") or [ans.get("text")]}
+            answer_field = {"aliases": ans.get("aliases") or [ans.get("text", "")]}
         elif isinstance(ans, str):
             answer_field = {"aliases": [ans]}
         else:
             answer_field = {"aliases": []}
 
-        entity_pages = ex.get("entity_pages") or ex.get("docs") or []
-        # Convert any non-string page into a joined string
-        pages: List[str] = []
-        if isinstance(entity_pages, list):
-            for p in entity_pages:
-                if isinstance(p, str):
-                    pages.append(p)
-                elif isinstance(p, list):
-                    pages.append(" ".join(str(x) for x in p))
-                else:
-                    pages.append(str(p))
+        # Extract documents from context.paragraphs (HF TriviaQA structure)
+        documents: List[str] = []
+        context = ex.get("context", {})
+        if isinstance(context, dict):
+            paragraphs = context.get("paragraphs", [])
+            if isinstance(paragraphs, list):
+                for para in paragraphs:
+                    if isinstance(para, dict):
+                        text = para.get("text", "").strip()
+                        if text:
+                            documents.append(text)
+                    elif isinstance(para, str):
+                        if para.strip():
+                            documents.append(para.strip())
+        
+        # Fallback: if no docs found, use a placeholder
+        if not documents and answer_field["aliases"]:
+            documents = [f"Information related to {answer_field['aliases'][0]}"]
 
         out_obj = {
             "question": q,
             "answer": answer_field,
-            "entity_pages": pages,
-            "question_id": ex.get("question_id") or ex.get("_id") or ex.get("id"),
+            "documents": documents,  # Use 'documents' field for compatibility with loader
+            "question_id": ex.get("question_id", "") or str(hash(q)),
         }
         rows.append(out_obj)
 
