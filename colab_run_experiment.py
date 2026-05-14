@@ -112,10 +112,10 @@ def write_config(path: Path, dataset_file: str, model_name: str, mode: str) -> N
             "top_k_fused": 20,
             "sparse_weight": 0.5,
             "dense_weight": 0.5,
-            "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+            "embedding_model": "sentence-transformers/all-mpnet-base-v2",
         },
         "reranking": {"enabled": True, "overlap_weight": 0.7, "dense_weight": 0.3},
-        "gating": {"confidence_threshold": 0.45, "fallback_expand_k": 40},
+        "gating": {"confidence_threshold": 0.55, "fallback_expand_k": 40},
         "generation": {"enabled": True, "model_name": model_name, "max_new_tokens": 64, "temperature": 0.0},
         "evaluation": {"compute_rouge_l": True, "compute_bleu": True},
         "output": {"predictions_csv": "outputs/predictions/predictions.csv", "metrics_json": "outputs/metrics/metrics.json", "log_file": "outputs/logs/run.log"},
@@ -127,7 +127,7 @@ def write_config(path: Path, dataset_file: str, model_name: str, mode: str) -> N
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, default="google/flan-t5-small", help="HF model name or local path")
+    parser.add_argument("--model", type=str, default="meta-llama/Llama-3.1-8B-Instruct", help="HF model name or local path")
     parser.add_argument("--dataset", type=str, default="triviaqa", choices=["triviaqa", "nq", "hotpotqa"], help="Which dataset to prepare")
     parser.add_argument("--mode", type=str, default="smoke", choices=["smoke", "subset", "full"], help="Run mode")
     parser.add_argument("--no-install", action="store_true", help="Skip pip installs")
