@@ -16,9 +16,38 @@ class Generator:
         if self.enabled:
             try:
                 from transformers import pipeline
+                import os
+                import traceback
 
-                self._pipeline = pipeline("text2text-generation", model=model_name)
+                hf_token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_HUB_TOKEN")
+
+                # Try a simple text2text pipeline first (works for many models)
+                try:
+                    print(f"[Generator] Trying text2text-generation pipeline for {model_name}")
+                    self._pipeline = pipeline("text2text-generation", model=model_name)
+                    print("[Generator] text2text pipeline initialized")
+                except Exception:
+                    print("[Generator] text2text pipeline failed, trying text-generation with trust_remote_code/device_map")
+                    try:
+                        # Prefer device_map='auto' to place model on GPU if available
+                        kwargs = {"trust_remote_code": True}
+                        # Pass token if available for gated models
+                        if hf_token:
+                            kwargs["use_auth_token"] = hf_token
+                        # device_map may be set by the pipeline automatically when available
+                        self._pipeline = pipeline("text-generation", model=model_name, **kwargs)
+                        print("[Generator] text-generation pipeline initialized")
+                    except Exception:
+                        print("[Generator] Failed to initialize any pipeline for generation")
+                        traceback.print_exc()
+                        self.enabled = False
+                        self._pipeline = None
             except Exception:
+                # Unexpected error during import or init
+                import traceback
+
+                print("[Generator] Unexpected error initializing generation pipeline")
+                traceback.print_exc()
                 self.enabled = False
                 self._pipeline = None
 
