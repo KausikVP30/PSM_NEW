@@ -135,6 +135,25 @@ def main() -> None:
     args = parser.parse_args()
 
     colab = detect_colab()
+    # Hugging Face authentication: prefer env var, otherwise prompt interactively in Colab
+    hf_token = os.environ.get("HF_TOKEN")
+    if not hf_token and colab:
+        try:
+            from getpass import getpass
+            from huggingface_hub import login, whoami
+
+            hf_token = getpass("Hugging Face token (will not be shown): ") or None
+            if hf_token:
+                try:
+                    login(token=hf_token)
+                    info = whoami()
+                    print(f"Logged into Hugging Face as: {info.get('name')}")
+                except Exception as e:
+                    print("HF login failed:", e)
+        except Exception:
+            # If huggingface_hub isn't available or getpass fails, continue without interrupting
+            hf_token = hf_token
+
     if colab and not args.no_install:
         print("Installing runtime dependencies (this may take a few minutes)...")
         pip_install([
