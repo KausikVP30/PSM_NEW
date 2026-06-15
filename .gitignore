@@ -18,3 +18,17 @@ kaggle_dataset_repo.zip
 dist/
 build/
 *.egg-info/
+outputs/
+.env
+.env.*
+*.key
+*.pem
+*.npy
+*.pt
+*.bin
+logs/
+.DS_Store
+Thumbs.db
+repo/
+data/
+kaggle_dataset_repo/

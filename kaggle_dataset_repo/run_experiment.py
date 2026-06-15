@@ -21,6 +21,7 @@ from src.data import load_dataset
 from src.generation import Generator
 from src.logging_utils import get_logger
 from src.memory import MemoryStore
+from src.memory import EmbeddingMemoryStore
 from src.pipeline import RAGPipeline
 from src.prompt import PromptAssembler
 from src.retrieval import BM25Retriever, DenseHNSWRetriever, HybridRetriever, LightweightReranker
@@ -67,6 +68,7 @@ def main() -> None:
     retrieval_cfg = settings.retrieval
     rerank_cfg = settings.reranking
     gating_cfg = settings.gating
+    memory_cfg = settings.memory
 
     bm25 = BM25Retriever(corpus)
     dense = DenseHNSWRetriever(
@@ -87,7 +89,19 @@ def main() -> None:
         dense_weight=float(rerank_cfg.get("dense_weight", 0.3)),
     )
     gate = ConfidenceGate(threshold=float(gating_cfg.get("confidence_threshold", 0.45)))
-    memory = MemoryStore(max_items=500)
+    memory = EmbeddingMemoryStore(
+        embedding_model=str(memory_cfg.get("embedding_model", "sentence-transformers/all-MiniLM-L6-v2")),
+        similarity_threshold=float(memory_cfg.get("similarity_threshold", 0.75)),
+        max_items=int(memory_cfg.get("max_items", 500)),
+        persist_embeddings=bool(memory_cfg.get("persist_embeddings", True)),
+        persist_dir=str(memory_cfg.get("persist_dir", "outputs/memory_embeddings")),
+        device=str(memory_cfg.get("device", "auto")),
+    )
+    logger.info(
+        "Initialized semantic memory with similarity_threshold=%.2f, device=%s",
+        memory.similarity_threshold,
+        memory.device,
+    )
     assembler = PromptAssembler(max_chars=4000)
     generator = Generator(
         enabled=bool(settings.generation.get("enabled", False)),

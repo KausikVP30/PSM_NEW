@@ -8,11 +8,34 @@ def ensure_parent(path: str) -> None:
 
 
 def resolve_device(setting: str) -> str:
-    if setting != "auto":
-        return setting
+    normalized = str(setting).strip().lower()
+    if normalized in {"gpu", "cuda"}:
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                return "cuda"
+            raise RuntimeError("CUDA is not available. GPU-only execution is required.")
+        except Exception:
+            raise RuntimeError("CUDA is not available or could not be initialized. GPU-only execution is required.")
+    if normalized.startswith("cuda:"):
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                return normalized
+            raise RuntimeError("CUDA is not available. GPU-only execution is required.")
+        except Exception:
+            raise RuntimeError("CUDA is not available or could not be initialized. GPU-only execution is required.")
+    if normalized == "cpu":
+        raise RuntimeError("CPU execution is disabled for this pipeline. Please provide a CUDA device.")
+    if normalized != "auto":
+        raise RuntimeError(f"Unsupported device setting: {setting}")
     try:
         import torch
 
-        return "cuda" if torch.cuda.is_available() else "cpu"
+        if torch.cuda.is_available():
+            return "cuda"
+        raise RuntimeError("CUDA is not available. GPU-only execution is required.")
     except Exception:
-        return "cpu"
+        raise RuntimeError("CUDA is not available or could not be initialized. GPU-only execution is required.")

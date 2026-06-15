@@ -12,6 +12,7 @@ transformers==4.31.0
 torch>=2.0.1,<2.3.0
 rouge-score==0.1.2
 nltk==3.8.1
+datasets>=2.19,<3.0
 
 # Notes:
 # - If a package fails to build on Kaggle, prefer using prebuilt dataset artifacts or enable internet in the notebook to pip install specific wheels.

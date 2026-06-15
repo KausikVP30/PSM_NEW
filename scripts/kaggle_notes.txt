@@ -1,8 +1,0 @@
-Kaggle run checklist
-1. Add your datasets to Kaggle notebook as input.
-2. Update config.yaml dataset paths.
-3. Keep generation.enabled=false for first stability pass.
-4. Run: python run_experiment.py --mode smoke
-5. Confirm outputs under outputs/predictions and outputs/metrics.
-6. If you need to package a local corpus for upload, use `python scripts/package_dataset.py --src path/to/folder --out my_dataset.zip`.
-7. Quick Kaggle cell commands are available in `scripts/prepare_kaggle_notebook.sh` (run with a "!bash scripts/prepare_kaggle_notebook.sh" cell).

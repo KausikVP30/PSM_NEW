@@ -43,7 +43,7 @@ def resolve_dataset_paths(dataset_paths: Dict[str, str], dataset_name: str = "")
     if root is None:
         return resolved
 
-    for key in ("nq", "triviaqa", "hotpotqa"):
+    for key in ("nq", "triviaqa", "hotpotqa", "qqp"):
         if resolved.get(key):
             continue
         candidates = _candidate_files(root, key)
@@ -54,7 +54,7 @@ def resolve_dataset_paths(dataset_paths: Dict[str, str], dataset_name: str = "")
     if dataset_name and root.exists():
         named_root = root / dataset_name
         if named_root.exists():
-            for key in ("nq", "triviaqa", "hotpotqa"):
+            for key in ("nq", "triviaqa", "hotpotqa", "qqp"):
                 if not resolved.get(key):
                     candidates = _candidate_files(named_root, key)
                     if candidates:

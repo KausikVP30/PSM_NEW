@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from collections import Counter
+import re
+import string
 from typing import Dict, List
 
 try:
@@ -9,15 +11,20 @@ try:
 except Exception:
     HAVE_ROUGE = False
 
-from collections import Counter
-from typing import Dict, List
-
 from src.data.schemas import PredictionRecord
-from src.retrieval.utils import tokenize
 
 
 def _normalize(text: str) -> str:
-    return " ".join(tokenize(text))
+    """TriviaQA/SQuAD-style answer normalization."""
+    text = (text or "").lower()
+    text = "".join(ch if ch not in string.punctuation else " " for ch in text)
+    text = re.sub(r"\b(a|an|the)\b", " ", text)
+    return " ".join(text.split())
+
+
+def _normalized_tokens(text: str) -> List[str]:
+    normalized = _normalize(text)
+    return normalized.split() if normalized else []
 
 
 def exact_match(pred: str, golds: List[str]) -> float:
@@ -26,13 +33,13 @@ def exact_match(pred: str, golds: List[str]) -> float:
 
 
 def token_f1(pred: str, golds: List[str]) -> float:
-    pred_toks = tokenize(pred)
+    pred_toks = _normalized_tokens(pred)
     if not pred_toks:
         return 0.0
 
     best = 0.0
     for g in golds:
-        gold_toks = tokenize(g)
+        gold_toks = _normalized_tokens(g)
         common = Counter(pred_toks) & Counter(gold_toks)
         num_same = sum(common.values())
         if num_same == 0:
@@ -45,12 +52,12 @@ def token_f1(pred: str, golds: List[str]) -> float:
 
 
 def bleu_unigram(pred: str, golds: List[str]) -> float:
-    pred_toks = tokenize(pred)
+    pred_toks = _normalized_tokens(pred)
     if not pred_toks:
         return 0.0
     best = 0.0
     for g in golds:
-        gold_toks = tokenize(g)
+        gold_toks = _normalized_tokens(g)
         overlap = Counter(pred_toks) & Counter(gold_toks)
         score = sum(overlap.values()) / len(pred_toks)
         best = max(best, score)
@@ -79,12 +86,12 @@ def rouge_l(pred: str, golds: List[str]) -> float:
                     dp[i][j] = max(dp[i + 1][j], dp[i][j + 1])
         return dp[0][0]
 
-    p_toks = tokenize(pred)
+    p_toks = _normalized_tokens(pred)
     if not p_toks:
         return 0.0
     best = 0.0
     for g in golds:
-        g_toks = tokenize(g)
+        g_toks = _normalized_tokens(g)
         if not g_toks:
             continue
         lcs = lcs_len(p_toks, g_toks)

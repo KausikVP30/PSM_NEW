@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 
 @dataclass
@@ -10,6 +10,16 @@ class QASample:
     question: str
     answers: List[str]
     documents: List[str]
+    metadata: Dict[str, str] = field(default_factory=dict)
+    context: str = ""
+
+
+@dataclass
+class QQPSample:
+    pair_id: str
+    question1: str
+    question2: str
+    label: Optional[int] = None
     metadata: Dict[str, str] = field(default_factory=dict)
 
 

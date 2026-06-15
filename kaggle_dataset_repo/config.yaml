@@ -32,11 +32,25 @@ reranking:
   dense_weight: 0.3
 
 gating:
-  confidence_threshold: 0.45
+  confidence_threshold: 0.75
   fallback_expand_k: 40
 
+memory:
+  # Semantic embedding-based memory lookup
+  embedding_model: sentence-transformers/all-MiniLM-L6-v2
+  similarity_threshold: 0.75
+  write_rouge_threshold: 0.7
+  write_reranker_threshold: 0.0
+  max_items: 500
+  persist_embeddings: true
+  persist_dir: outputs/memory_embeddings
+  device: auto  # auto/gpu/cpu - auto selects GPU with max free memory
+  quality_metric_weights:
+    reranker_score: 0.5
+    rouge_l_score: 0.5
+
 generation:
-  enabled: false
+  enabled: true
   model_name: google/flan-t5-small
   max_new_tokens: 64
   temperature: 0.0

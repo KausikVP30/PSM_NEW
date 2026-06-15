@@ -32,6 +32,10 @@ class Settings:
         return self.raw.get("gating", {})
 
     @property
+    def memory(self) -> Dict[str, Any]:
+        return self.raw.get("memory", {})
+
+    @property
     def generation(self) -> Dict[str, Any]:
         return self.raw.get("generation", {})
 
