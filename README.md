@@ -52,3 +52,8 @@ This project implements a reliability-first RAG pipeline with:
 - Then run the shared experiment config:
   - `python run_multi_dataset_experiment.py --config config_multi_dataset.yaml --dataset all --mode all`
 - The runner keeps the same retrieval, generation, memory, and evaluation settings across datasets and modes.
+
+## TriviaQA RAW vs Paraphrased
+- Run the two-phase TriviaQA experiment in full mode with the shared-GPU wrapper:
+   - `python scripts/run_with_ollama.py --runner run_triviaqa_raw_paraphrase_experiment.py --config config_triviaqa_paraphrase_experiment.yaml --mode full`
+- That launcher selects the GPU with the most free memory when `CUDA_VISIBLE_DEVICES` is unset, starts Ollama on a private local port, and writes separate RAW and PARAPHRASED predictions plus a combined metrics JSON containing `raw_run` and `paraphrased_run`.

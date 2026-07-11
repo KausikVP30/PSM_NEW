@@ -29,73 +29,188 @@ def _extract_span(tokens: List[str], start: int, end: int) -> str:
     return " ".join(str(t) for t in tokens[start:end]).strip()
 
 
+# def _extract_documents(example: Dict[str, Any]) -> List[str]:
+#     documents: List[str] = []
+
+#     tokens_obj = example.get("document", {}).get("tokens") if isinstance(example.get("document"), dict) else example.get("tokens")
+#     tokens = tokens_obj.get("token", []) if isinstance(tokens_obj, dict) else tokens_obj
+#     if not isinstance(tokens, list):
+#         tokens = []
+
+#     # Long answer candidates
+#     long_answers = example.get("long_answer_candidates", [])
+#     if isinstance(long_answers, dict):
+#         starts = long_answers.get("start_token", [])
+#         ends = long_answers.get("end_token", [])
+#         for start_token, end_token in zip(starts, ends):
+#             doc_text = _extract_span(tokens, int(start_token), int(end_token))
+#             if doc_text:
+#                 documents.append(doc_text)
+#     else:
+#         for la in long_answers:
+#             if isinstance(la, dict):
+#                 start_token = int(la.get("start_token", 0))
+#                 end_token = int(la.get("end_token", 0))
+#                 doc_text = _extract_span(tokens, start_token, end_token)
+#                 if doc_text:
+#                     documents.append(doc_text)
+
+#     # Annotation spans
+#     annotations = example.get("annotations", [])
+#     if isinstance(annotations, dict):
+#         long_answers = annotations.get("long_answer", [])
+#         short_answers = annotations.get("short_answers", [])
+#         for long_answer in long_answers:
+#             if isinstance(long_answer, dict):
+#                 start_token = int(long_answer.get("start_token", -1))
+#                 end_token = int(long_answer.get("end_token", -1))
+#                 doc_text = _extract_span(tokens, start_token, end_token)
+#                 if doc_text:
+#                     documents.append(doc_text)
+#         for short_answer in short_answers:
+#             if isinstance(short_answer, dict):
+#                 starts = short_answer.get("start_token", [])
+#                 ends = short_answer.get("end_token", [])
+#                 for start_token, end_token in zip(starts, ends):
+#                     doc_text = _extract_span(tokens, int(start_token), int(end_token))
+#                     if doc_text:
+#                         documents.append(doc_text)
+#     else:
+#         for ann in annotations:
+#             if isinstance(ann, dict):
+#                 long_answer = ann.get("long_answer", {})
+#                 if isinstance(long_answer, dict):
+#                     start_token = int(long_answer.get("start_token", -1))
+#                     end_token = int(long_answer.get("end_token", -1))
+#                     doc_text = _extract_span(tokens, start_token, end_token)
+#                     if doc_text:
+#                         documents.append(doc_text)
+
+#                 short_answers = ann.get("short_answers", [])
+#                 for sa in short_answers:
+#                     if isinstance(sa, dict):
+#                         start_token = int(sa.get("start_token", -1))
+#                         end_token = int(sa.get("end_token", -1))
+#                         doc_text = _extract_span(tokens, start_token, end_token)
+#                         if doc_text:
+#                             documents.append(doc_text)
+    
+#     return documents
+
+
+
 def _extract_documents(example: Dict[str, Any]) -> List[str]:
-    documents: List[str] = []
+    documents = []
 
     tokens_obj = example.get("document", {}).get("tokens") if isinstance(example.get("document"), dict) else example.get("tokens")
     tokens = tokens_obj.get("token", []) if isinstance(tokens_obj, dict) else tokens_obj
     if not isinstance(tokens, list):
-        tokens = []
+        return []
 
-    # Long answer candidates
-    long_answers = example.get("long_answer_candidates", [])
-    if isinstance(long_answers, dict):
-        starts = long_answers.get("start_token", [])
-        ends = long_answers.get("end_token", [])
-        for start_token, end_token in zip(starts, ends):
-            doc_text = _extract_span(tokens, int(start_token), int(end_token))
-            if doc_text:
-                documents.append(doc_text)
-    else:
-        for la in long_answers:
-            if isinstance(la, dict):
-                start_token = int(la.get("start_token", 0))
-                end_token = int(la.get("end_token", 0))
-                doc_text = _extract_span(tokens, start_token, end_token)
-                if doc_text:
-                    documents.append(doc_text)
-
-    # Annotation spans
     annotations = example.get("annotations", [])
     if isinstance(annotations, dict):
-        long_answers = annotations.get("long_answer", [])
-        short_answers = annotations.get("short_answers", [])
-        for long_answer in long_answers:
-            if isinstance(long_answer, dict):
-                start_token = int(long_answer.get("start_token", -1))
-                end_token = int(long_answer.get("end_token", -1))
-                doc_text = _extract_span(tokens, start_token, end_token)
-                if doc_text:
-                    documents.append(doc_text)
-        for short_answer in short_answers:
-            if isinstance(short_answer, dict):
-                starts = short_answer.get("start_token", [])
-                ends = short_answer.get("end_token", [])
-                for start_token, end_token in zip(starts, ends):
-                    doc_text = _extract_span(tokens, int(start_token), int(end_token))
-                    if doc_text:
-                        documents.append(doc_text)
-    else:
-        for ann in annotations:
-            if isinstance(ann, dict):
-                long_answer = ann.get("long_answer", {})
-                if isinstance(long_answer, dict):
-                    start_token = int(long_answer.get("start_token", -1))
-                    end_token = int(long_answer.get("end_token", -1))
-                    doc_text = _extract_span(tokens, start_token, end_token)
+        annotations = [annotations]
+
+    for ann in annotations:
+        if not isinstance(ann, dict):
+            continue
+
+        long_answer = ann.get("long_answer", {})
+
+        # Handle list vs dict
+        if isinstance(long_answer, list):
+            long_answers = long_answer
+        else:
+            long_answers = [long_answer]
+
+        for la in long_answers:
+            if not isinstance(la, dict):
+                continue
+
+            start_token = la.get("start_token", -1)
+            end_token = la.get("end_token", -1)
+  
+            # Handle list vs scalar
+            if isinstance(start_token, list):
+                starts = start_token
+                ends = end_token if isinstance(end_token, list) else [end_token]
+            else:
+                starts = [start_token]
+                ends = [end_token]
+
+            for start, end in zip(starts, ends):
+                start = int(start)
+                end = int(end)
+
+                if start >= 0 and end > start:
+                    window = 200
+                    start = max(0, start - window)
+                    end = min(len(tokens), end + window)
+
+                    doc_text = " ".join(tokens[start:end]).strip()
                     if doc_text:
                         documents.append(doc_text)
 
-                short_answers = ann.get("short_answers", [])
-                for sa in short_answers:
-                    if isinstance(sa, dict):
-                        start_token = int(sa.get("start_token", -1))
-                        end_token = int(sa.get("end_token", -1))
-                        doc_text = _extract_span(tokens, start_token, end_token)
-                        if doc_text:
-                            documents.append(doc_text)
-    
+                if start >= 0 and end > start:
+                    window = 200
+                    start = max(0, start - window)
+                    end = min(len(tokens), end + window)
+
+                    doc_text = " ".join(tokens[start:end]).strip()
+                    if doc_text:
+                        documents.append(doc_text)
+
     return documents
+
+def _extract_answers(example: Dict[str, Any]) -> List[str]:
+    answers = []
+
+    tokens_obj = example.get("document", {}).get("tokens") if isinstance(example.get("document"), dict) else example.get("tokens")
+    tokens = tokens_obj.get("token", []) if isinstance(tokens_obj, dict) else tokens_obj
+    if not isinstance(tokens, list):
+        return []
+
+    annotations = example.get("annotations", [])
+    if isinstance(annotations, dict):
+        annotations = [annotations]
+
+    for ann in annotations:
+        if not isinstance(ann, dict):
+            continue
+
+        # ✅ ONLY SHORT ANSWERS
+        for sa in ann.get("short_answers", []):
+            if isinstance(sa, dict):
+                start_token = sa.get("start_token", -1)
+                end_token = sa.get("end_token", -1)
+
+                # Handle list vs scalar
+                if isinstance(start_token, list):
+                    starts = start_token
+                    ends = end_token if isinstance(end_token, list) else [end_token]
+                else:
+                    starts = [start_token]
+                    ends = [end_token]
+
+                for start, end in zip(starts, ends):
+                    start = int(start)
+                    end = int(end)
+
+                    if start >= 0 and end > start:
+                        ans = " ".join(tokens[start:end]).strip()
+                        if ans:
+                            answers.append(ans)
+
+
+        # ✅ YES/NO handling (clean)
+        yes_no = ann.get("yes_no_answer")
+        if yes_no is not None:
+            if yes_no == 1:
+                answers.append("yes")
+            elif yes_no == 0:
+                answers.append("no")
+
+    return list(set(a.strip() for a in answers if a.strip())) # deduplicate
 
 
 def _iter_dataset(split: str):
@@ -133,56 +248,62 @@ def build_rows(split: str, max_samples: int | None = None) -> Iterable[Dict[str,
             continue
 
         # Get answers from annotations
-        answers: List[str] = []
-        annotations = example.get("annotations", [])
-        tokens_obj = example.get("document", {}).get("tokens") if isinstance(example.get("document"), dict) else example.get("tokens")
-        tokens = tokens_obj.get("token", []) if isinstance(tokens_obj, dict) else tokens_obj
-        if not isinstance(tokens, list):
-            tokens = []
+        # answers: List[str] = []
+        # annotations = example.get("annotations", [])
+        # tokens_obj = example.get("document", {}).get("tokens") if isinstance(example.get("document"), dict) else example.get("tokens")
+        # tokens = tokens_obj.get("token", []) if isinstance(tokens_obj, dict) else tokens_obj
+        # if not isinstance(tokens, list):
+        #     tokens = []
 
-        if isinstance(annotations, dict):
-            short_answers = annotations.get("short_answers", [])
-            yes_no_answers = annotations.get("yes_no_answer", [])
-            for short_answer, yes_no in zip(short_answers, yes_no_answers):
-                if isinstance(short_answer, dict):
-                    starts = short_answer.get("start_token", [])
-                    ends = short_answer.get("end_token", [])
-                    texts = short_answer.get("text", [])
-                    for text in texts:
-                        if str(text).strip():
-                            answers.append(str(text).strip())
-                    for start_token, end_token in zip(starts, ends):
-                        ans_text = _extract_span(tokens, int(start_token), int(end_token))
-                        if ans_text:
-                            answers.append(ans_text)
-                try:
-                    yes_no_int = int(yes_no)
-                except (TypeError, ValueError):
-                    yes_no_int = -1
-                if yes_no_int != -1:
-                    answers.append("yes" if yes_no_int == 1 else "no")
-        else:
-            for ann in annotations:
-                if isinstance(ann, dict):
-                    short_answers = ann.get("short_answers", [])
-                    for sa in short_answers:
-                        if isinstance(sa, dict):
-                            start_token = sa.get("start_token", -1)
-                            end_token = sa.get("end_token", -1)
-                            ans_text = _extract_span(tokens, int(start_token), int(end_token))
-                            if ans_text:
-                                answers.append(ans_text)
-                    # Also check yes/no answers
-                    yes_no = ann.get("yes_no_answer")
-                    if yes_no is not None:
-                        answers.append("yes" if yes_no else "no")
+        # if isinstance(annotations, dict):
+        #     short_answers = annotations.get("short_answers", [])
+        #     yes_no_answers = annotations.get("yes_no_answer", [])
+        #     for short_answer, yes_no in zip(short_answers, yes_no_answers):
+        #         if isinstance(short_answer, dict):
+        #             starts = short_answer.get("start_token", [])
+        #             ends = short_answer.get("end_token", [])
+        #             texts = short_answer.get("text", [])
+        #             for text in texts:
+        #                 if str(text).strip():
+        #                     answers.append(str(text).strip())
+        #             for start_token, end_token in zip(starts, ends):
+        #                 ans_text = _extract_span(tokens, int(start_token), int(end_token))
+        #                 if ans_text:
+        #                     answers.append(ans_text)
+        #         try:
+        #             yes_no_int = int(yes_no)
+        #         except (TypeError, ValueError):
+        #             yes_no_int = -1
+        #         if yes_no_int != -1:
+        #             answers.append("yes" if yes_no_int == 1 else "no")
+        # else:
+        #     for ann in annotations:
+        #         if isinstance(ann, dict):
+        #             short_answers = ann.get("short_answers", [])
+        #             for sa in short_answers:
+        #                 if isinstance(sa, dict):
+        #                     start_token = sa.get("start_token", -1)
+        #                     end_token = sa.get("end_token", -1)
+        #                     ans_text = _extract_span(tokens, int(start_token), int(end_token))
+        #                     if ans_text:
+        #                         answers.append(ans_text)
+        #             # Also check yes/no answers
+        #             yes_no = ann.get("yes_no_answer")
+        #             if yes_no is not None:
+        #                 answers.append("yes" if yes_no else "no")
 
+        # if not answers:
+        #     continue
+
+        answers = _extract_answers(example)
         if not answers:
             continue
 
         documents = _extract_documents(example)
         if not documents:
             continue
+
+        documents = [doc for doc in documents if len(doc.split()) > 10]
 
         # Deduplicate documents
         seen = set()
@@ -192,6 +313,12 @@ def build_rows(split: str, max_samples: int | None = None) -> Iterable[Dict[str,
                 seen.add(doc)
                 unique_docs.append(doc)
 
+        if index < 3:
+            print("\n--- SAMPLE ---")
+            print("Q:", question)
+            print("A:", answers)
+            print("DOC:", documents[0][:200])
+
         yield {
             "question_id": str(example.get("example_id") or example.get("id") or f"nq-{index}"),
             "question": question,
@@ -199,6 +326,7 @@ def build_rows(split: str, max_samples: int | None = None) -> Iterable[Dict[str,
             "documents": unique_docs,
             "metadata": {"dataset": "nq", "split": split},
         }
+
 
 
 def main() -> None:

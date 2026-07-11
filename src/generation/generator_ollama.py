@@ -43,13 +43,27 @@ class OllamaGenerator:
                 f"Unable to reach Ollama at {self.ollama_endpoint}. Start the server before running generation."
             ) from exc
 
+    # 🔥 FIXED: HARD CAP TOTAL CONTEXT SIZE
     def _format_docs(self, docs: List[RetrievedDoc]) -> str:
+        MAX_TOTAL_CONTEXT = 1500  # total characters allowed
+        MAX_DOCS = 2              # limit number of docs
+
         lines: List[str] = []
-        for idx, doc in enumerate(docs[:5], start=1):
+        current_len = 0
+
+        for idx, doc in enumerate(docs[:MAX_DOCS], start=1):
             text = (doc.text or "").strip()
             if not text:
                 continue
-            lines.append(f"{idx}. {text[:1000]}")
+
+            remaining = MAX_TOTAL_CONTEXT - current_len
+            if remaining <= 0:
+                break
+
+            snippet = text[:remaining]
+            lines.append(f"{idx}. {snippet}")
+            current_len += len(snippet)
+
         return "\n\n".join(lines)
 
     def _build_payload(self, question: str, docs: List[RetrievedDoc], memory_context: str | None = None) -> dict:
@@ -59,18 +73,31 @@ class OllamaGenerator:
             "No explanation, no preamble, no supporting evidence. "
             "If the answer is not present in the context, return unknown."
         )
+
         sections = []
+
+        # 🔥 FIXED: LIMIT MEMORY SIZE
         if memory_context:
-            sections.append(f"Memory hint:\n{memory_context.strip()[:1000]}")
+            memory_context = memory_context.strip()[:300]
+            sections.append(f"Memory hint:\n{memory_context}")
+
         docs_text = self._format_docs(docs)
         if docs_text:
             sections.append(f"Context:\n{docs_text}")
+
         sections.append(f"Question:\n{question}")
+
         user_prompt = "\n\n".join(sections)
+
+        # 🔍 DEBUG (optional)
+        if self._debug:
+            print("PROMPT LENGTH:", len(user_prompt))
+
         options = {
             "num_predict": self.max_tokens,
             "temperature": self.temperature,
         }
+
         num_gpu = os.environ.get("OLLAMA_NUM_GPU")
         if num_gpu is not None and num_gpu.strip():
             try:
@@ -88,6 +115,7 @@ class OllamaGenerator:
 
     def _normalize_answer(self, text: str) -> str:
         normalized = " ".join(text.strip().split())
+
         normalized = re.sub(
             r"^(?:the\s+)?(?:correct\s+)?answer\s+is\s+",
             "",
@@ -106,14 +134,18 @@ class OllamaGenerator:
             normalized,
             flags=re.IGNORECASE,
         )
+
         normalized = normalized.strip().strip('"').strip("'")
+
         if normalized.endswith((".", "!", "?")):
             normalized = normalized[:-1].rstrip()
+
         return normalized
 
     def generate(self, question: str, docs: List[RetrievedDoc], memory_context: str | None = None) -> str:
         payload = self._build_payload(question, docs, memory_context=memory_context)
         payload_json = json.dumps(payload).encode("utf-8")
+
         request = urllib.request.Request(
             f"{self.ollama_endpoint}/api/generate",
             data=payload_json,
@@ -145,6 +177,7 @@ class OllamaGenerator:
             raise RuntimeError(f"Ollama error: {data['error']}")
 
         answer = self._normalize_answer(str(data.get("response", "")))
+
         if not answer:
             raise RuntimeError(f"Ollama returned an empty answer: {data}")
 
