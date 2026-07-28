@@ -36,4 +36,13 @@ kaggle_dataset_repo/
 src/pipeline/test.py
 data/
 tests/
+config_multi.yaml
+config_triviaqa_full.yaml
+config_triviaqa_paraphrase_experiment.yaml
+run_experiment_gpu.py
+run_experiment.py
+run_triviaqa_full.py
+run_triviaqa_raw_paraphrase_experiment.py
+test_generator.py
+test_ollama_generator.py
 
