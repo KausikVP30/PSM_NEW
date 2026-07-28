@@ -30,10 +30,10 @@ logs/
 .DS_Store
 Thumbs.db
 repo/
-kaggle_dataset_repo/
 kaggle_kernel_output/
 kaggle_kernel_output_latest/
 kaggle_dataset_repo/
 src/pipeline/test.py
-tests/
 data/
+tests/
+
