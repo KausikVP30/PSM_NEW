@@ -34,8 +34,8 @@ kaggle_kernel_output/
 kaggle_kernel_output_latest/
 kaggle_dataset_repo/
 src/pipeline/test.py
-data/
-tests/
+/data/
+/tests/
 config_multi.yaml
 config_triviaqa_full.yaml
 config_triviaqa_paraphrase_experiment.yaml
