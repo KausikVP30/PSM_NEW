@@ -6,7 +6,7 @@
     max_samples_subset: 200
 
   data:
-    dataset_name: hotpotqa
+    dataset_name: triviaqa
     skip_no_evidence: true
     dataset_paths:
       nq: "data/nq_processed.jsonl"

@@ -159,14 +159,22 @@ class RAGPipeline:
                     top_k=max(5, int(self.retrieval_cfg.get("top_k_final", 5))),
                 )
                 final_docs = reranked
-                top_doc_score = reranked[0].score if reranked else 0.0
-                recall_flags = self._retrieval_recall_flags(fused, sample.answers)
+                top_doc_score = (
+                    reranked[0].score
+                    if reranked
+                    else (
+                        fused[0].score
+                        if fused
+                        else 0
+                    )
+                )
+                recall_flags = self._retrieval_recall_flags(final_docs, sample.answers)
                 for key, value in recall_flags.items():
                     retrieval_recall_sums[key] += value
                 if idx <= 3:
                     self._log_retrieved_docs(sample, reranked or fused, sample.answers, memory_score, memory_confidence)
 
-            prediction = self.generator.generate(sample.question, final_docs, memory_context=memory_context)
+            prediction = self.generator.generate(sample.question, final_docs[:5], memory_context=memory_context)
             if prediction is None:
                 prediction = ""
 
@@ -175,7 +183,10 @@ class RAGPipeline:
             rouge_score = rouge_l(prediction, sample.answers)
             f1_score = token_f1(prediction, sample.answers)
             em_score = exact_match(prediction, sample.answers)
-            context_for_storage = memory_context if used_memory else " ".join(d.text for d in final_docs)
+            context_for_storage = memory_context if used_memory else "\n\n".join(
+                d.text
+                for d in final_docs[:3]
+            )
             evidence_supported = self._contains_gold(context_for_storage, sample.answers)
             if evidence_supported:
                 gold_in_context_count += 1

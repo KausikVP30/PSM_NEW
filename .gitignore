@@ -18,7 +18,7 @@ kaggle_dataset_repo.zip
 dist/
 build/
 *.egg-info/
-outputs/
+outputs/memory_embeddings
 .env
 .env.*
 *.key
@@ -30,5 +30,10 @@ logs/
 .DS_Store
 Thumbs.db
 repo/
-data/
 kaggle_dataset_repo/
+kaggle_kernel_output/
+kaggle_kernel_output_latest/
+kaggle_dataset_repo/
+src/pipeline/test.py
+tests/
+data/

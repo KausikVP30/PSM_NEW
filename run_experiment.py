@@ -112,7 +112,7 @@ def main() -> None:
         m=int(retrieval_cfg.get("hnsw_m", 16)),
         ef_construction=int(retrieval_cfg.get("hnsw_ef_construction", 200)),
         ef_search=int(retrieval_cfg.get("hnsw_ef_search", 64)),
-        device=str(settings.run.get("device", "gpu")),
+        device=device,
     )
     hybrid = HybridRetriever(
         bm25=bm25,
@@ -194,6 +194,11 @@ def main() -> None:
     elapsed = time.time() - start
 
     metrics = dict(result.metrics)
+    metrics["dataset"] = settings.data.get("dataset_name", "unknown")
+    metrics["run_mode"] = mode
+    metrics["generator_model"] = ollama_model_name
+    metrics["device"] = device
+    metrics["seed"] = seed
     metrics["runtime_seconds"] = float(elapsed)
     metrics["num_samples"] = float(len(samples))
 
@@ -227,6 +232,19 @@ def main() -> None:
         metrics["total_latency_seconds"] = float(total_latency_seconds)
 
     write_metrics_json(metrics, metrics_json)
+
+    print("\n========== Experiment Summary ==========")
+    print(f"Dataset      : {metrics['dataset']}")
+    print(f"Mode         : {metrics['run_mode']}")
+    print(f"Generator    : {metrics['generator_model']}")
+    print(f"Device       : {metrics['device']}")
+    print(f"Samples      : {metrics['num_samples']}")
+    print(f"Exact Match  : {metrics.get('exact_match', 0):.4f}")
+    print(f"Token F1     : {metrics.get('token_f1', 0):.4f}")
+    print(f"Recall@3     : {metrics.get('retrieval.recall@3', 0):.4f}")
+    print(f"Memory Hit   : {metrics.get('memory.hit_rate', 0):.4f}")
+    print(f"Latency      : {metrics.get('avg_latency_seconds', 0):.4f}s")
+    print("========================================\n")
 
     logger.info("Finished | runtime=%.2fs | metrics=%s", elapsed, metrics)
     print("Run complete")
