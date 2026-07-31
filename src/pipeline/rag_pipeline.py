@@ -101,7 +101,10 @@ class RAGPipeline:
         memory_hit_correct = 0
         memory_hit_count = 0
         retrieval_recall_sums = {f"retrieval.recall@{k}": 0.0 for k in (1, 3, 5, 10)}
+        retrieval_scored_count = 0
         gold_in_context_count = 0
+        gold_in_context_memory_count = 0
+        gold_in_context_retrieval_count = 0
 
         total = len(samples)
 
@@ -171,6 +174,8 @@ class RAGPipeline:
                 recall_flags = self._retrieval_recall_flags(final_docs, sample.answers)
                 for key, value in recall_flags.items():
                     retrieval_recall_sums[key] += value
+                retrieval_scored_count += 1
+
                 if idx <= 3:
                     self._log_retrieved_docs(sample, reranked or fused, sample.answers, memory_score, memory_confidence)
 
@@ -178,18 +183,31 @@ class RAGPipeline:
             if prediction is None:
                 prediction = ""
 
-            # Step 3: Compute quality metrics for memory storage
-            # Compute ROUGE-L score for this prediction
+            sample_latency = time.time() - sample_start   # <-- STOP TIMER HERE: this is what a real request pays
+
+            # Step 3: Compute quality metrics for reporting only (gold-based, NOT used to gate memory admission)
             rouge_score = rouge_l(prediction, sample.answers)
             f1_score = token_f1(prediction, sample.answers)
             em_score = exact_match(prediction, sample.answers)
+
             context_for_storage = memory_context if used_memory else "\n\n".join(
                 d.text
                 for d in final_docs[:3]
             )
             evidence_supported = self._contains_gold(context_for_storage, sample.answers)
+
+            # Deployable, gold-free quality signal used to gate memory admission (replaces gold-based scoring)
+            entailment_score = self.quality_estimator.score(
+                premise=context_for_storage, hypothesis=prediction
+            )
+
             if evidence_supported:
                 gold_in_context_count += 1
+                if used_memory:
+                    gold_in_context_memory_count += 1
+                else:
+                    gold_in_context_retrieval_count += 1
+
             if used_memory and em_score:
                 memory_hit_correct += 1
             
@@ -203,7 +221,7 @@ class RAGPipeline:
                 answer_f1=f1_score,
                 rouge_l_score=rouge_score,
                 context=context_for_storage,
-                evidence_supported=evidence_supported and (em_score > 0.0 or f1_score >= float(self.gating_cfg.get("memory_write_f1_threshold", 0.8))),
+                evidence_supported=evidence_supported #and (em_score > 0.0 or f1_score >= float(self.gating_cfg.get("memory_write_f1_threshold", 0.8))),
             )
 
             rec = PredictionRecord(
@@ -231,7 +249,7 @@ class RAGPipeline:
             )
 
             # per-sample latency and retrieval summary
-            sample_latency = time.time() - sample_start
+            #sample_latency = time.time() - sample_start
             retrieved_summary = " || ".join(f"{d.doc_id}:{d.score:.4f}:{d.source}" for d in final_docs) if final_docs else "memory_hit"
 
             # append to incremental predictions CSV if requested
@@ -269,6 +287,7 @@ class RAGPipeline:
                 except Exception:
                     pass
 
+        self.memory.flush()   # ensure last batch of adds is persisted even if under flush_every
         metrics = evaluate_predictions(records)
         route_counts = {
             "memory_hit": sum(1 for r in records if r.route == "memory_hit"),
@@ -277,7 +296,8 @@ class RAGPipeline:
         metrics.update({f"routes.{k}": float(v) for k, v in route_counts.items()})
         retrieval_count = max(1, route_counts["retrieval_hit"])
         for key, value in retrieval_recall_sums.items():
-            metrics[key] = float(value / retrieval_count)
+            # Explicitly label the denominator so this can never be misread as "of all 200"
+            metrics[f"{key}_of_retrieval_routed_n{retrieval_count}"] = float(value / retrieval_count)
         metrics.update({
             "memory.size": float(self.memory.size()),
             "memory.hit_rate": float(route_counts["memory_hit"]) / len(records) if records else 0.0,
@@ -285,7 +305,15 @@ class RAGPipeline:
             "memory.skipped_retrieval": float(memory_hit_count),
             "memory.avg_score": float(sum(memory_scores) / len(memory_scores)) if memory_scores else 0.0,
             "memory.max_score": float(max(memory_scores)) if memory_scores else 0.0,
-            "context.gold_in_context_rate": float(gold_in_context_count / len(records)) if records else 0.0,
+            "context.gold_in_context_rate_all_n": float(gold_in_context_count / len(records)) if records else 0.0,
+            "context.gold_in_context_rate_retrieval_routed": (
+                float(gold_in_context_retrieval_count / route_counts["retrieval_hit"])
+                if route_counts["retrieval_hit"] else 0.0
+            ),
+            "context.gold_in_context_rate_memory_routed": (
+                float(gold_in_context_memory_count / route_counts["memory_hit"])
+                if route_counts["memory_hit"] else 0.0
+            ),
         })
         
         return PipelineResult(records=records, metrics=metrics)

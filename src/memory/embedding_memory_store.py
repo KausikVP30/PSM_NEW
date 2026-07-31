@@ -50,6 +50,7 @@ class EmbeddingMemoryStore:
         persist_embeddings: bool = True,
         persist_dir: str = "outputs/memory_embeddings",
         device: str = "auto",
+        flush_every: int = 25,
     ) -> None:
         """Initialize semantic memory store.
         
@@ -87,6 +88,8 @@ class EmbeddingMemoryStore:
         self._embedding_model = None
         self._items: List[MemoryItemWithEmbedding] = []
         self._timestamp_counter = 0
+        self._dirty_count = 0
+        self.flush_every = int(flush_every)
 
         # Create persist directory if needed
         if self.persist_embeddings:
@@ -194,11 +197,15 @@ class EmbeddingMemoryStore:
             self._items.pop(0)
 
         # Persist if enabled
+        # Persist periodically instead of on every insert (avoids O(N) pickle cost per add)
         if self.persist_embeddings:
-            try:
-                self._save_to_disk()
-            except Exception:
-                pass
+            self._dirty_count += 1
+            if self._dirty_count >= self.flush_every:
+                try:
+                    self._save_to_disk()
+                    self._dirty_count = 0
+                except Exception as e:
+                    self._logger.warning("Periodic save_to_disk failed: %s", e)
 
     def lookup_item(self, query: str) -> Tuple[Optional[MemoryItemWithEmbedding], float]:
         """Look up similar queries in memory.
@@ -230,8 +237,6 @@ class EmbeddingMemoryStore:
             quality = float(getattr(item, "quality_score", 0.0))
             effective_score = similarity * quality
 
-            if similarity > best_similarity:
-                best_similarity = similarity
             if (
                 similarity >= self.similarity_threshold
                 and quality >= self.min_quality
@@ -239,8 +244,9 @@ class EmbeddingMemoryStore:
             ):
                 best_candidate_score = effective_score
                 best_item = item
+                best_item_similarity = similarity
 
-        return best_item, float(best_similarity)
+        return best_item, float(best_item_similarity)
 
     def lookup(self, query: str) -> Tuple[Optional[str], float]:
         """Backward-compatible answer lookup."""
@@ -305,6 +311,19 @@ class EmbeddingMemoryStore:
     def size(self) -> int:
         """Return current number of stored items."""
         return len(self._items)
+
+    def size(self) -> int:
+        """Return current number of stored items."""
+        return len(self._items)
+
+    def flush(self) -> None:
+        """Force a save regardless of the dirty counter — call at end of a run."""
+        if self.persist_embeddings and self._dirty_count > 0:
+            try:
+                self._save_to_disk()
+                self._dirty_count = 0
+            except Exception as e:
+                self._logger.warning("flush() save_to_disk failed: %s", e)
 
     def clear(self) -> None:
         """Clear all stored items."""

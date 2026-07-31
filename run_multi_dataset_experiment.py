@@ -24,7 +24,7 @@ os.environ["PYTHONPATH"] = cwd + (os.pathsep + os.environ.get("PYTHONPATH", "") 
 
 from src.config import load_settings
 from src.data import load_dataset
-from src.data.paraphrase import paraphrase_samples
+from src.data.paraphrase import paraphrase_samples_verified
 from src.data.schemas import QASample
 from src.generation import OllamaGenerator
 from src.logging_utils import get_logger
@@ -141,8 +141,10 @@ def _create_pipeline(settings, corpus: List[str], dataset: str, persist_dir: str
         doc_text_max_chars=int(retrieval_cfg.get("doc_text_max_chars", 300)),
         cross_encoder_model=str(rerank_cfg.get("cross_encoder_model", "")),
     )
-    gate = ConfidenceGate(threshold=float(gating_cfg.get("confidence_threshold", 0.60)))
-
+    gate = ConfidenceGate(
+        similarity_threshold=float(gating_cfg.get("similarity_threshold", 0.60)),
+        quality_threshold=float(gating_cfg.get("quality_threshold", 0.55)),
+    )
     memory = EmbeddingMemoryStore(
         embedding_model=str(memory_cfg.get("embedding_model", "sentence-transformers/all-MiniLM-L6-v2")),
         similarity_threshold=float(memory_cfg.get("similarity_threshold", 0.60)),
@@ -198,6 +200,18 @@ def main() -> None:
     logger.info("Starting multi-dataset RAW vs paraphrased experiment")
     logger.info("Kaggle detected: %s", is_kaggle())
 
+    paraphrase_generator = OllamaGenerator(
+        ollama_endpoint=os.environ.get(
+            "OLLAMA_ENDPOINT", str(settings.generation.get("ollama_endpoint", "http://127.0.0.1:11435"))
+        ).strip(),
+        model_name=str(settings.generation.get("model_name", "llama3")).removeprefix("ollama:").strip() or "llama3",
+        max_tokens=64,
+        temperature=0.3,
+    )
+    from sentence_transformers import CrossEncoder
+    nli_model = CrossEncoder("cross-encoder/nli-deberta-v3-base")
+    OVERSAMPLE_FACTOR = 1.5  # raise to 2.0 if pass rate comes back low
+
     device = resolve_device(str(settings.run.get("device", "auto")))
     logger.info("Resolved device: %s", device)
 
@@ -213,13 +227,60 @@ def main() -> None:
             logger.info("Running dataset=%s mode=%s", dataset, mode)
             logger.info("=" * 60)
 
-            current_max = max_smoke if mode == "smoke" else max_subset
-            raw_samples = _load_samples_for_dataset(settings.data, dataset, mode, current_max)
-            logger.info("Loaded %d RAW samples for %s (%s)", len(raw_samples), dataset, mode)
-            if not raw_samples:
+            target_n = max_smoke if mode == "smoke" else max_subset
+            batch_size = int(target_n * 0.5)   # how much extra to pull each retry round
+            max_pool_multiplier = 4            # safety cap: give up after pool = 4x target_n
+
+            pool_size = target_n
+            raw_pool = []
+            paraphrased_pool = []
+            paraphrase_audit = []
+
+            while len(paraphrased_pool) < target_n and pool_size <= target_n * max_pool_multiplier:
+                raw_pool = _load_samples_for_dataset(settings.data, dataset, mode, pool_size)
+                if not raw_pool:
+                    break
+
+                paraphrased_pool, paraphrase_audit = paraphrase_samples_verified(
+                    raw_pool, paraphrase_generator, nli_model, threshold=0.8,
+                )
+                logger.info(
+                    "Pool size %d -> %d/%d passed verification for %s (%s)",
+                    pool_size, len(paraphrased_pool), len(raw_pool), dataset, mode,
+                )
+                if len(paraphrased_pool) >= target_n:
+                    break
+                pool_size += batch_size
+
+            if not raw_pool:
                 logger.warning("No samples loaded for %s (%s), skipping", dataset, mode)
                 continue
 
+            if len(paraphrased_pool) < target_n:
+                logger.error(
+                    "Could not reach target N=%d for %s (%s) even at pool_size=%d (only %d passed). "
+                    "Increase max_pool_multiplier, lower the NLI threshold, or check the dataset has "
+                    "enough source questions.",
+                    target_n, dataset, mode, pool_size, len(paraphrased_pool),
+                )
+                continue  # do not silently proceed with an unequal N
+
+            pool_pass_rate = len(paraphrased_pool) / len(raw_pool) if raw_pool else 0.0
+            logger.info("Final paraphrase pass rate for %s (%s): %.1f%% (%d/%d, pool_size=%d)",
+                        dataset, mode, pool_pass_rate * 100, len(paraphrased_pool), len(raw_pool), pool_size)
+
+            audit_path = resolve_output_path("", f"metrics/{dataset}_{mode}_paraphrase_audit.json")
+            os.makedirs(os.path.dirname(audit_path), exist_ok=True)
+            with open(audit_path, "w", encoding="utf-8") as f:
+                json.dump(paraphrase_audit, f, indent=2)
+
+            paraphrased_samples = paraphrased_pool[:target_n]
+            target_ids = [s.sample_id.removesuffix("-paraphrased") for s in paraphrased_samples]
+            raw_by_id = {s.sample_id: s for s in raw_pool}
+            raw_samples = [raw_by_id[i] for i in target_ids]  # matched, same-order subset, exactly target_n
+
+            logger.info("Using exactly %d matched raw/paraphrased pairs for %s (%s)", len(raw_samples), dataset, mode)
+            
             preview_count = min(5, len(raw_samples))
             for sample in random.sample(raw_samples, preview_count):
                 context_snippet = (sample.context or " ".join(sample.documents[:2]))[:300].replace("\n", " ")
@@ -261,8 +322,10 @@ def main() -> None:
             progress_raw = resolve_output_path("", f"metrics/progress_{dataset}_{mode}_raw.json")
             progress_paraphrased = resolve_output_path("", f"metrics/progress_{dataset}_{mode}_paraphrased.json")
             comparison_json = resolve_output_path("", f"metrics/{dataset}_{mode}_comparison.json")
+            predictions_paraphrased_nomem = resolve_output_path("", f"predictions/{dataset}_{mode}_paraphrased_nomem.csv")
+            progress_paraphrased_nomem = resolve_output_path("", f"metrics/progress_{dataset}_{mode}_paraphrased_nomem.json")
 
-            for path in (predictions_raw, predictions_paraphrased, progress_raw, progress_paraphrased):
+            for path in (predictions_raw, predictions_paraphrased, progress_raw, progress_paraphrased, predictions_paraphrased_nomem, progress_paraphrased_nomem):
                 _clear_path(path)
 
             os.makedirs(os.path.dirname(predictions_raw), exist_ok=True)
@@ -286,8 +349,7 @@ def main() -> None:
                 raw_elapsed,
             )
 
-            # Phase 2: PARAPHRASED — test semantic memory (same pipeline, same memory, same corpus)
-            paraphrased_samples = paraphrase_samples(raw_samples)
+            # Phase 2: PARAPHRASED — matched pairs computed above, reused here
             logger.info("Phase 2: PARAPHRASED run (%d samples)", len(paraphrased_samples))
             paraphrased_start = time.time()
             paraphrased_result = pipeline.run(
@@ -309,9 +371,36 @@ def main() -> None:
                 paraphrased_elapsed,
             )
 
+            # Phase 2b: PARAPHRASED, memory-disabled control (same pipeline, same queries, memory cleared and forced off)
+            pipeline.memory.clear()
+            original_threshold = pipeline.gate.threshold
+            pipeline.gate.threshold = 1.01  # forces every memory_score < threshold -> always a miss
+            logger.info("Phase 2b: PARAPHRASED memory-disabled control (%d samples)", len(paraphrased_samples))
+            nomem_start = time.time()
+            paraphrased_nomem_result = pipeline.run(
+                paraphrased_samples,
+                predictions_path=predictions_paraphrased_nomem,
+                progress_path=progress_paraphrased_nomem,
+            )
+            nomem_elapsed = time.time() - nomem_start
+            paraphrased_nomem_metrics = _finalize_metrics(
+                paraphrased_nomem_result,
+                nomem_elapsed,
+                len(paraphrased_samples),
+                predictions_paraphrased_nomem,
+            )
+            pipeline.gate.threshold = original_threshold  # restore for the next dataset/mode iteration
+            logger.info(
+                "Phase 2b complete | memory.hit_rate=%.3f runtime=%.2fs",
+                paraphrased_nomem_metrics.get("memory.hit_rate", 0),
+                nomem_elapsed,
+            )
+
+
             comparison = {
                 "raw_run": raw_metrics,
                 "paraphrased_run": paraphrased_metrics,
+                "paraphrased_nomem_run": paraphrased_nomem_metrics,
             }
             with open(comparison_json, "w", encoding="utf-8") as f:
                 json.dump(comparison, f, indent=2)

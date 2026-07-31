@@ -19,7 +19,7 @@ retrieval:
   top_k_dense: 30
   top_k_fused: 20
   top_k_rerank: 20
-  top_k_final: 7                # Increased from 5
+  top_k_final: 10               # Increased from 5
 
   sparse_weight: 0.45           # Increased semantic influence
   dense_weight: 0.55
@@ -42,7 +42,8 @@ reranking:
   cross_encoder_model: ""
 
 gating:
-  confidence_threshold: 0.58    # Slightly relaxed
+  similarity_threshold: 0.60    # tau_s — matches memory.similarity_threshold below for consistency
+  quality_threshold: 0.55       # tau_c — matches memory.min_quality below
 
   fallback_expand_k: 40
 

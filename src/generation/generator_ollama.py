@@ -78,7 +78,7 @@ class OllamaGenerator:
 
         # 🔥 FIXED: LIMIT MEMORY SIZE
         if memory_context:
-            memory_context = memory_context.strip()[:300]
+            memory_context = memory_context.strip()[:1500]
             sections.append(f"Memory hint:\n{memory_context}")
 
         docs_text = self._format_docs(docs)
@@ -184,3 +184,30 @@ class OllamaGenerator:
         logger.info("Ollama final answer: %s", answer)
 
         return answer
+
+    def generate_raw(self, system_prompt: str, user_prompt: str) -> str:
+        """Generic single-turn completion, bypassing the QA-specific prompt builder."""
+        payload = {
+            "model": self.model_name,
+            "system": system_prompt,
+            "prompt": user_prompt,
+            "stream": False,
+            "options": {"num_predict": 64, "temperature": 0.3},
+        }
+        payload_json = json.dumps(payload).encode("utf-8")
+        request = urllib.request.Request(
+            f"{self.ollama_endpoint}/api/generate",
+            data=payload_json,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
+                raw_text = response.read().decode("utf-8", errors="replace")
+        except Exception as exc:
+            raise RuntimeError(f"Ollama generate_raw failed: {exc}") from exc
+
+        data = json.loads(raw_text)
+        if "error" in data and data["error"]:
+            raise RuntimeError(f"Ollama error: {data['error']}")
+        return str(data.get("response", "")).strip()

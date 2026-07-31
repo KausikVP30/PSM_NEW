@@ -9,19 +9,32 @@ This project implements a reliability-first RAG pipeline with:
 
 ## Quick Start
 
-1. Install dependencies:
+1. Install Python dependencies:
    ```bash
    pip install -r requirements.txt
    ```
-2. Configure settings in `config.yaml`.
-3. Run smoke test mode:
+2. Ensure the extra prerequisites below are satisfied.
+3. Configure settings in `config.yaml`.
+4. Run smoke test mode:
    ```bash
    python run_experiment.py --mode smoke
    ```
-4. Run validation subset:
+5. Run validation subset:
    ```bash
    python run_experiment.py --mode subset
    ```
+
+## Extra Prerequisites
+
+This repo’s Python requirements are sufficient for the core code, but a full experiment run also needs:
+- Ollama installed and running locally.
+- The Ollama model pulled separately before running, for example:
+  ```bash
+  ollama pull <model-name>
+  ```
+- A compatible GPU/CUDA setup if you plan to use GPU acceleration.
+- Internet access for downloading model weights and any required dataset artifacts.
+- The relevant dataset files prepared or available in the configured data paths.
 
 ## Output Artifacts
 - `outputs/predictions/predictions.csv`

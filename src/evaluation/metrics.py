@@ -11,8 +11,13 @@ try:
 except Exception:
     HAVE_ROUGE = False
 
-from src.data.schemas import PredictionRecord
+try:
+    from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
+    HAVE_NLTK_BLEU = True
+except Exception:
+    HAVE_NLTK_BLEU = False
 
+from src.data.schemas import PredictionRecord
 
 def _normalize(text: str) -> str:
     """TriviaQA/SQuAD-style answer normalization."""
@@ -51,7 +56,9 @@ def token_f1(pred: str, golds: List[str]) -> float:
     return best
 
 
-def bleu_unigram(pred: str, golds: List[str]) -> float:
+def unigram_precision(pred: str, golds: List[str]) -> float:
+    """What was previously mislabeled as 'bleu_unigram'. Kept as a separate,
+    correctly-named diagnostic metric — not reported as BLEU."""
     pred_toks = _normalized_tokens(pred)
     if not pred_toks:
         return 0.0
@@ -62,6 +69,21 @@ def bleu_unigram(pred: str, golds: List[str]) -> float:
         score = sum(overlap.values()) / len(pred_toks)
         best = max(best, score)
     return best
+
+
+def bleu(pred: str, golds: List[str]) -> float:
+    """Real BLEU (up to 4-gram, smoothed) against multiple references."""
+    pred_toks = _normalized_tokens(pred)
+    if not pred_toks or not HAVE_NLTK_BLEU:
+        return 0.0
+    refs = [_normalized_tokens(g) for g in golds if _normalized_tokens(g)]
+    if not refs:
+        return 0.0
+    # short-answer QA predictions are often 1-3 tokens, so cap n-gram order to
+    # avoid nltk's default 4-gram weights collapsing very short answers to 0
+    max_order = min(4, len(pred_toks))
+    weights = tuple(1.0 / max_order for _ in range(max_order))
+    return sentence_bleu(refs, pred_toks, weights=weights, smoothing_function=SmoothingFunction().method1)
 
 
 def rouge_l(pred: str, golds: List[str]) -> float:
@@ -108,16 +130,18 @@ def rouge_l(pred: str, golds: List[str]) -> float:
 
 def evaluate_predictions(records: List[PredictionRecord]) -> Dict[str, float]:
     if not records:
-        return {"exact_match": 0.0, "token_f1": 0.0, "bleu": 0.0, "rougeL": 0.0}
+        return {"exact_match": 0.0, "token_f1": 0.0, "bleu": 0.0, "unigram_precision": 0.0, "rougeL": 0.0}
 
     em = sum(exact_match(r.prediction, r.gold_answers) for r in records) / len(records)
     f1 = sum(token_f1(r.prediction, r.gold_answers) for r in records) / len(records)
-    bleu = sum(bleu_unigram(r.prediction, r.gold_answers) for r in records) / len(records)
+    bleu_score = sum(bleu(r.prediction, r.gold_answers) for r in records) / len(records)
+    unigram = sum(unigram_precision(r.prediction, r.gold_answers) for r in records) / len(records)
     rouge = sum(rouge_l(r.prediction, r.gold_answers) for r in records) / len(records)
 
     return {
         "exact_match": float(em),
         "token_f1": float(f1),
-        "bleu": float(bleu),
+        "bleu": float(bleu_score),
+        "unigram_precision": float(unigram),
         "rougeL": float(rouge),
     }
