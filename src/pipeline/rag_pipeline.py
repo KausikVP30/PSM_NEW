@@ -197,9 +197,9 @@ class RAGPipeline:
             evidence_supported = self._contains_gold(context_for_storage, sample.answers)
 
             # Deployable, gold-free quality signal used to gate memory admission (replaces gold-based scoring)
-            entailment_score = self.quality_estimator.score(
-                premise=context_for_storage, hypothesis=prediction
-            )
+            # entailment_score = self.quality_estimator.score(
+            #     premise=context_for_storage, hypothesis=prediction
+            # )
 
             if evidence_supported:
                 gold_in_context_count += 1

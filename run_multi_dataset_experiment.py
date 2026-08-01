@@ -210,6 +210,7 @@ def main() -> None:
     )
     from sentence_transformers import CrossEncoder
     nli_model = CrossEncoder("cross-encoder/nli-deberta-v3-base")
+    print(nli_model.model.config.id2label)
     OVERSAMPLE_FACTOR = 1.5  # raise to 2.0 if pass rate comes back low
 
     device = resolve_device(str(settings.run.get("device", "auto")))
@@ -373,8 +374,12 @@ def main() -> None:
 
             # Phase 2b: PARAPHRASED, memory-disabled control (same pipeline, same queries, memory cleared and forced off)
             pipeline.memory.clear()
-            original_threshold = pipeline.gate.threshold
-            pipeline.gate.threshold = 1.01  # forces every memory_score < threshold -> always a miss
+
+            original_similarity_threshold = pipeline.gate.similarity_threshold
+            original_quality_threshold = pipeline.gate.quality_threshold
+
+            pipeline.gate.similarity_threshold = 1.01
+            pipeline.gate.quality_threshold = 1.01
             logger.info("Phase 2b: PARAPHRASED memory-disabled control (%d samples)", len(paraphrased_samples))
             nomem_start = time.time()
             paraphrased_nomem_result = pipeline.run(
@@ -389,7 +394,8 @@ def main() -> None:
                 len(paraphrased_samples),
                 predictions_paraphrased_nomem,
             )
-            pipeline.gate.threshold = original_threshold  # restore for the next dataset/mode iteration
+            pipeline.gate.similarity_threshold = original_similarity_threshold
+            pipeline.gate.quality_threshold = original_quality_threshold
             logger.info(
                 "Phase 2b complete | memory.hit_rate=%.3f runtime=%.2fs",
                 paraphrased_nomem_metrics.get("memory.hit_rate", 0),

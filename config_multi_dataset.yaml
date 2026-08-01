@@ -57,7 +57,7 @@ memory:
   write_rouge_threshold: 0.50
   write_reranker_threshold: 0.20
 
-  min_quality: 0.55             # Store higher-quality memories
+  min_quality: 0.50             # Store higher-quality memories
 
   require_evidence_support: false
 

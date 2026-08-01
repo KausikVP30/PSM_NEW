@@ -138,7 +138,8 @@ class EmbeddingMemoryStore:
         Returns:
             Combined quality score (0.0-1.0)
         """
-        quality = self.reranker_quality_weight * reranker_score + self.rouge_quality_weight * rouge_l_score
+        #quality = self.reranker_quality_weight * reranker_score + self.rouge_quality_weight * rouge_l_score
+        quality = reranker_score
         return float(np.clip(quality, 0.0, 1.0))
 
     def add(
@@ -161,11 +162,12 @@ class EmbeddingMemoryStore:
             rouge_l_score: ROUGE-L match score if available (0.0-1.0)
         """
         # Only store high-quality, evidence-backed entries to avoid reinforcing noisy answers.
-        if not (evidence_supported or answer_f1 >= self.min_answer_f1):
+        if self.require_evidence_support and not evidence_supported:
             return
 
         # Compute quality score for stored metadata only.
         quality = self._compute_quality_score(reranker_score, rouge_l_score)
+        
         if quality < self.min_quality:
             return
 
@@ -208,16 +210,6 @@ class EmbeddingMemoryStore:
                     self._logger.warning("Periodic save_to_disk failed: %s", e)
 
     def lookup_item(self, query: str) -> Tuple[Optional[MemoryItemWithEmbedding], float]:
-        """Look up similar queries in memory.
-        
-        Args:
-            query: Query to search for
-            
-        Returns:
-            Tuple of (best_item, similarity_score)
-            - best_item: None if no match above threshold
-            - similarity_score: Max similarity found (0.0-1.0)
-        """
         if not self._items:
             return None, 0.0
 
@@ -227,26 +219,60 @@ class EmbeddingMemoryStore:
             self._logger.warning("Embedding failed during lookup(): %s", e)
             return None, 0.0
 
+        # best_item = None
+        # best_candidate_score = 0.0
+        # best_similarity = 0.0
+
+        # for item in self._items:
+        #     similarity = self._cosine_similarity(query_embedding, item.query_embedding)
+        #     quality = float(getattr(item, "quality_score", 0.0))
+        #     effective_score = similarity * quality
+
+        #     if (
+        #         similarity >= self.similarity_threshold
+        #         and quality >= self.min_quality
+        #         and effective_score > best_candidate_score
+        #     ):
+        #         best_candidate_score = effective_score
+        #         best_similarity = similarity
+        #         best_item = item
+
+        # return best_item, best_similarity
+
+
         best_item = None
-        best_candidate_score = 0.0
         best_similarity = 0.0
+        best_quality = 0.0
+
+        SIMILARITY_MARGIN = 0.02
 
         for item in self._items:
-            # Compute cosine similarity
-            similarity = self._cosine_similarity(query_embedding, item.query_embedding)
+
+            similarity = self._cosine_similarity(
+                query_embedding,
+                item.query_embedding,
+            )
+
             quality = float(getattr(item, "quality_score", 0.0))
-            effective_score = similarity * quality
 
             if (
-                similarity >= self.similarity_threshold
-                and quality >= self.min_quality
-                and effective_score > best_candidate_score
+                similarity < self.similarity_threshold
+                or quality < self.min_quality
             ):
-                best_candidate_score = effective_score
-                best_item = item
-                best_item_similarity = similarity
+                continue
 
-        return best_item, float(best_item_similarity)
+            if similarity > best_similarity:
+                best_similarity = similarity
+                best_quality = quality
+                best_item = item
+
+            elif abs(similarity - best_similarity) <= SIMILARITY_MARGIN:
+                if quality > best_quality:
+                    best_similarity = similarity
+                    best_quality = quality
+                    best_item = item
+
+        return best_item, best_similarity
 
     def lookup(self, query: str) -> Tuple[Optional[str], float]:
         """Backward-compatible answer lookup."""

@@ -71,7 +71,13 @@ class LightweightReranker:
             for doc in candidates:
                 d_tokens = token_set(doc.text)
 
-                overlap = len(q_tokens & d_tokens) / max(len(q_tokens), 1)
+                # overlap = len(q_tokens & d_tokens) / max(len(q_tokens), 1)
+
+                intersection = len(q_tokens & d_tokens)
+                union = len(q_tokens | d_tokens)
+
+                overlap = intersection / max(union, 1)
+
                 score = (
                     self.overlap_weight * overlap +
                     self.dense_weight * doc.score

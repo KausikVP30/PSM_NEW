@@ -45,8 +45,8 @@ class OllamaGenerator:
 
     # 🔥 FIXED: HARD CAP TOTAL CONTEXT SIZE
     def _format_docs(self, docs: List[RetrievedDoc]) -> str:
-        MAX_TOTAL_CONTEXT = 1500  # total characters allowed
-        MAX_DOCS = 2              # limit number of docs
+        MAX_TOTAL_CONTEXT = 2000  # total characters allowed
+        MAX_DOCS = 3           # limit number of docs
 
         lines: List[str] = []
         current_len = 0

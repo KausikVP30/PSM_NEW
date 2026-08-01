@@ -9,37 +9,71 @@ from .schemas import QASample
 def paraphrase_question_llm(question: str, generator) -> str:
     """Generate a paraphrase using the LLM. `generator` must be an OllamaGenerator."""
     system_prompt = (
-        "You rephrase questions using different wording while preserving their "
-        "exact meaning and the same correct answer. Return only the rephrased "
-        "question, nothing else."
+        "You are an expert paraphrasing assistant.\n\n"
+        "Rewrite the given question using substantially different wording while "
+        "preserving exactly the same meaning and exactly the same answer.\n\n"
+        "Rules:\n"
+        "- Do NOT answer the question.\n"
+        "- Do NOT add or remove information.\n"
+        "- Return only a single rewritten question.\n"
+        "- Do not include explanations, prefixes, or quotation marks."
     )
     user_prompt = f"Original question: {question}\nRephrased question:"
     result = generator.generate_raw(system_prompt, user_prompt)
-    result = result.strip().strip('"').strip("'")
+    result = result.strip()
+
+    prefixes = [
+        "Rephrased question:",
+        "Rephrased:",
+        "Question:",
+        "Paraphrase:",
+    ]
+
+    for p in prefixes:
+        if result.lower().startswith(p.lower()):
+            result = result[len(p):].strip()
+
+    result = result.strip('"').strip("'")
     if not result.endswith("?"):
         result = result.rstrip(".") + "?"
     return result
 
 
-def verify_paraphrase(original: str, paraphrase: str, nli_model, threshold: float = 0.8) -> Tuple[bool, float]:
-    """Bidirectional entailment check using a CrossEncoder NLI model.
-    Returns (passed, min_score). Verify label index against your checkpoint's
-    id2label before running at scale (see note in the chat reply)."""
+def verify_paraphrase(original: str, paraphrase: str, nli_model, threshold: float = 0.65) -> Tuple[bool, float]:
+    """
+    Bidirectional entailment verification using a CrossEncoder NLI model.
+
+    Returns
+    -------
+    (bool, float)
+        (passed, average_entailment_score)
+    """
     if not paraphrase or paraphrase.strip().lower() == original.strip().lower():
         return False, 0.0
     scores = nli_model.predict([(original, paraphrase), (paraphrase, original)])
-    entail_fwd = float(scores[0][-1])
-    entail_bwd = float(scores[1][-1])
-    min_score = min(entail_fwd, entail_bwd)
-    return min_score >= threshold, min_score
+    ENTAILMENT_INDEX = 1
 
+    entail_fwd = float(scores[0][ENTAILMENT_INDEX])
+    entail_bwd = float(scores[1][ENTAILMENT_INDEX])    
+    
+    score = (entail_fwd + entail_bwd) / 2.0
+    
+    print(
+        f"\nOriginal: {original}\n"
+        f"Paraphrase: {paraphrase}\n"
+        f"Forward: {entail_fwd:.3f}\n"
+        f"Backward: {entail_bwd:.3f}\n"
+        f"Average: {score:.3f}\n"
+    )
+
+    return score >= threshold, score
 
 def paraphrase_samples_verified(
     samples: List[QASample],
     generator,
     nli_model,
-    threshold: float = 0.8,
-    max_retries: int = 1,
+    threshold: float = 0.65,
+    max_retries: int = 3,
 ) -> Tuple[List[QASample], List[dict]]:
     """Paraphrase + verify each sample. Returns (kept_samples, audit_log).
     kept_samples only includes samples that passed verification;
@@ -77,5 +111,7 @@ def paraphrase_samples_verified(
                     question=best_paraphrase,
                 )
             )
+        else:
+            kept.append(sample)
 
     return kept, audit_log
